@@ -24,8 +24,8 @@ use super::core::LoadSignExtendExecutor;
 #[repr(C)]
 struct LoadSignExtendPreCompute {
     imm_extended: u32,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
     e: u8,
 }
 
@@ -68,8 +68,8 @@ impl<A, const LIMB_BITS: usize> LoadSignExtendExecutor<A, { RV32_REGISTER_NUM_LI
 
         *data = LoadSignExtendPreCompute {
             imm_extended,
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
             e: e_u32 as u8,
         };
         let enabled = !f.is_zero();

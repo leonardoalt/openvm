@@ -314,7 +314,9 @@ impl<F: PrimeField32> TranspilerExtension<F> for XRegs1024TranspilerExtension {
                     _ => Some(nop()),
                 }
             }
-            _ => return None,
+            // Unknown opcode — likely data bytes in the text segment.
+            // Treat as NOP to allow transpilation to continue.
+            _ => Some(nop()),
         };
 
         // Emit instruction without gap. Each 64-bit instruction consumes 2 u32s
@@ -430,7 +432,7 @@ fn make_lui<F: PrimeField32>(d: &Decoded64) -> Option<Instruction<F>> {
         F::from_u32((imm >> 12) & 0xfffff),
         F::ONE,
         F::ZERO,
-        F::ZERO,
+        F::ONE,  // f=1: enable write (LUI shares chip with JAL, f is the enable flag)
         F::ZERO,
     ))
 }

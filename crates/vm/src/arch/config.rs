@@ -7,7 +7,7 @@ use std::{
 use derive_new::new;
 use getset::{Setters, WithSetters};
 use openvm_instructions::{
-    riscv::{RV32_IMM_AS, RV32_MEMORY_AS, RV32_REGISTER_AS},
+    riscv::{RV32_IMM_AS, RV32_MEMORY_AS, RV32_NUM_REGISTERS, RV32_REGISTER_AS},
     NATIVE_AS,
 };
 use openvm_poseidon2_air::Poseidon2Config;
@@ -190,7 +190,7 @@ impl Default for MemoryConfig {
         let mut addr_spaces =
             Self::empty_address_space_configs((1 << 3) + ADDR_SPACE_OFFSET as usize);
         const MAX_CELLS: usize = 1 << 29;
-        addr_spaces[RV32_REGISTER_AS as usize].num_cells = 32 * size_of::<u32>();
+        addr_spaces[RV32_REGISTER_AS as usize].num_cells = RV32_NUM_REGISTERS * size_of::<u32>();
         addr_spaces[RV32_MEMORY_AS as usize].num_cells = MAX_CELLS;
         addr_spaces[PUBLIC_VALUES_AS as usize].num_cells = DEFAULT_MAX_NUM_PUBLIC_VALUES;
         addr_spaces[NATIVE_AS as usize].num_cells = MAX_CELLS;

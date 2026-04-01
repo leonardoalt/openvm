@@ -18,7 +18,7 @@ use crate::common::*;
 #[repr(C)]
 struct AuiPcPreCompute {
     imm: u32,
-    a: u8,
+    a: u16,
 }
 
 impl<A> Rv32AuipcExecutor<A> {
@@ -36,7 +36,7 @@ impl<A> Rv32AuipcExecutor<A> {
         let data: &mut AuiPcPreCompute = data.borrow_mut();
         *data = AuiPcPreCompute {
             imm,
-            a: a.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
         };
         Ok(())
     }

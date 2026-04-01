@@ -21,9 +21,9 @@ use crate::MulHExecutor;
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
 struct MulHPreCompute {
-    a: u8,
-    b: u8,
-    c: u8,
+    a: u16,
+    b: u16,
+    c: u16,
 }
 
 impl<A, const LIMB_BITS: usize> MulHExecutor<A, { RV32_REGISTER_NUM_LIMBS }, LIMB_BITS> {
@@ -34,9 +34,9 @@ impl<A, const LIMB_BITS: usize> MulHExecutor<A, { RV32_REGISTER_NUM_LIMBS }, LIM
         data: &mut MulHPreCompute,
     ) -> Result<MulHOpcode, StaticProgramError> {
         *data = MulHPreCompute {
-            a: inst.a.as_canonical_u32() as u8,
-            b: inst.b.as_canonical_u32() as u8,
-            c: inst.c.as_canonical_u32() as u8,
+            a: inst.a.as_canonical_u32() as u16,
+            b: inst.b.as_canonical_u32() as u16,
+            c: inst.c.as_canonical_u32() as u16,
         };
         Ok(MulHOpcode::from_usize(
             inst.opcode.local_opcode_idx(MulHOpcode::CLASS_OFFSET),

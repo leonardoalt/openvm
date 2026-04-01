@@ -24,8 +24,8 @@ use super::core::LoadStoreExecutor;
 #[repr(C)]
 struct LoadStorePreCompute {
     imm_extended: u32,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
     e: u8,
 }
 
@@ -75,8 +75,8 @@ impl<A, const NUM_CELLS: usize> LoadStoreExecutor<A, NUM_CELLS> {
 
         *data = LoadStorePreCompute {
             imm_extended,
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
             e: e_u32 as u8,
         };
         Ok((local_opcode, enabled, is_native_store))
@@ -217,6 +217,11 @@ unsafe fn execute_e12_impl<
             pc,
             1 << POINTER_MAX_BITS
         );
+    }
+    if ptr_val >= (1 << POINTER_MAX_BITS) {
+        eprintln!("LOADSTORE FAIL: pc={} a={} b={} e={} rs1_bytes={:?} rs1_val=0x{:08x} imm_ext=0x{:08x} ptr_val=0x{:08x}",
+            pc, pre_compute.a, pre_compute.b, pre_compute.e,
+            rs1_bytes, rs1_val, pre_compute.imm_extended, ptr_val);
     }
     debug_assert!(ptr_val < (1 << POINTER_MAX_BITS));
 

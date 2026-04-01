@@ -22,8 +22,8 @@ use crate::{adapters::imm_to_bytes, common::*};
 #[repr(C)]
 struct ShiftPreCompute {
     c: u32,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
 }
 
 impl<A, const NUM_LIMBS: usize, const LIMB_BITS: usize> ShiftExecutor<A, NUM_LIMBS, LIMB_BITS> {
@@ -52,8 +52,8 @@ impl<A, const NUM_LIMBS: usize, const LIMB_BITS: usize> ShiftExecutor<A, NUM_LIM
             } else {
                 c_u32
             },
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
         };
         // `d` is always expected to be RV32_REGISTER_AS.
         Ok((is_imm, shift_opcode))

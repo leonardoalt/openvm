@@ -6,4 +6,4 @@ pub const RV32_IMM_AS: u32 = 0;
 pub const RV32_REGISTER_AS: u32 = 1;
 pub const RV32_MEMORY_AS: u32 = 2;
 
-pub const RV32_NUM_REGISTERS: usize = 32;
+pub const RV32_NUM_REGISTERS: usize = 1024;

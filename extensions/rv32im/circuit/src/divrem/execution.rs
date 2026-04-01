@@ -23,9 +23,9 @@ use crate::common::{gpr_to_xmm, xmm_to_gpr};
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
 struct DivRemPreCompute {
-    a: u8,
-    b: u8,
-    c: u8,
+    a: u16,
+    b: u16,
+    c: u16,
 }
 
 impl<A, const LIMB_BITS: usize> DivRemExecutor<A, { RV32_REGISTER_NUM_LIMBS }, LIMB_BITS> {
@@ -45,9 +45,9 @@ impl<A, const LIMB_BITS: usize> DivRemExecutor<A, { RV32_REGISTER_NUM_LIMBS }, L
         }
         let pre_compute: &mut DivRemPreCompute = data.borrow_mut();
         *pre_compute = DivRemPreCompute {
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
-            c: c.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
+            c: c.as_canonical_u32() as u16,
         };
         Ok(local_opcode)
     }

@@ -25,6 +25,7 @@ use openvm_rv32im_transpiler::{
     XRegs1024TranspilerExtension,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
+use openvm_stark_backend::p3_field::PrimeField32 as _;
 use openvm_transpiler::{elf::Elf, transpiler::Transpiler, FromElf};
 use serde::{Deserialize, Serialize};
 use test_case::test_case;
@@ -227,5 +228,130 @@ fn test_terminate_prove() -> Result<()> {
             .with_extension(ModularTranspilerExtension),
     )?;
     air_test(Rv32ImBuilder, config, openvm_exe);
+    Ok(())
+}
+
+#[test]
+fn test_xregs1024_keccak_comparison() -> Result<()> {
+    use std::time::Instant;
+
+    // BASELINE: Standard 32-register RISC-V
+    let baseline_elf = get_elf("tests/data/keccak-baseline")?;
+    let mut baseline_exe = VmExe::from_elf(
+        baseline_elf,
+        Transpiler::<F>::default()
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    // Initialize SP (register x2, byte offset 8 in address space 1) to 0x200400
+    let sp_val: u32 = 0x200400;
+    for (i, byte) in sp_val.to_le_bytes().iter().enumerate() {
+        baseline_exe.init_memory.insert((1, 8 + i as u32), *byte);
+    }
+
+    let config = Rv32ImConfig::default();
+    let executor = VmExecutor::new(config.clone())?;
+
+    let t0 = Instant::now();
+    let baseline_interpreter = executor.instance(&baseline_exe)?;
+    baseline_interpreter.execute(vec![], None)?;
+    let baseline_time = t0.elapsed();
+
+    // Count instructions in baseline
+    let baseline_insn_count = baseline_exe.program.defined_instructions().len();
+    eprintln!("=== BASELINE (32 registers) ===");
+    eprintln!("Instructions in program: {}", baseline_insn_count);
+    eprintln!("Execution time: {:?}", baseline_time);
+
+    // EXTENDED: 1024-register RISC-V (64-bit encoding)
+    // Register BOTH XRegs1024 (for 64-bit compiled code) and standard
+    // extensions (for 32-bit inline asm / linker stubs)
+    let extended_elf = get_elf("tests/data/keccak-xregs1024")?;
+    let mut extended_exe = VmExe::from_elf(
+        extended_elf,
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension)
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+
+    // Initialize SP for extended version too
+    for (i, byte) in sp_val.to_le_bytes().iter().enumerate() {
+        extended_exe.init_memory.insert((1, 8 + i as u32), *byte);
+    }
+
+    let t1 = Instant::now();
+    let extended_interpreter = executor.instance(&extended_exe)?;
+    extended_interpreter.execute(vec![], None)?;
+    let extended_time = t1.elapsed();
+
+    let extended_insn_count = extended_exe.program.defined_instructions().len();
+    eprintln!("=== EXTENDED (1024 registers) ===");
+    eprintln!("Instructions in program: {}", extended_insn_count);
+    eprintln!("Execution time: {:?}", extended_time);
+
+    eprintln!("=== COMPARISON ===");
+    eprintln!("Instruction reduction: {} -> {} ({:.1}% fewer)",
+        baseline_insn_count, extended_insn_count,
+        (1.0 - extended_insn_count as f64 / baseline_insn_count as f64) * 100.0);
+
+    Ok(())
+}
+
+#[test]
+fn test_xregs1024_trace_instructions() -> Result<()> {
+    let elf = get_elf("tests/data/keccak-xregs1024")?;
+    
+    eprintln!("u32 stream ({} words):", elf.instructions.len());
+    for (i, w) in elf.instructions.iter().enumerate().take(20) {
+        let is64 = w & 0x7f == 0x3f;
+        eprintln!("  [{:3}] 0x{:08x} {}", i, w, if is64 { "LO" } else { "HI" });
+    }
+    
+    let exe = VmExe::from_elf(
+        elf,
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension)
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    
+    eprintln!("\nTranspiled ({} instructions):", exe.program.defined_instructions().len());
+    for (i, inst) in exe.program.defined_instructions().iter().enumerate().take(15) {
+        let inst = inst;
+        eprintln!("  [{:3}] op={:4} a={:6} b={:6} c={:10} d={} e={}",
+            i, inst.opcode.as_usize(),
+            inst.a.as_canonical_u32(), inst.b.as_canonical_u32(),
+            inst.c.as_canonical_u32(), inst.d.as_canonical_u32(), inst.e.as_canonical_u32());
+    }
+    
+    Ok(())
+}
+
+#[test]
+fn test_xregs1024_extended_only() -> Result<()> {
+    let elf = get_elf("tests/data/keccak-xregs1024")?;
+    
+    let exe = VmExe::from_elf(
+        elf,
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension)
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    
+    eprintln!("pc_start: 0x{:08x}", exe.pc_start);
+    eprintln!("Program size: {}", exe.program.defined_instructions().len());
+    eprintln!("Init memory size: {}", exe.init_memory.len());
+    
+    let config = Rv32ImConfig::default();
+    let executor = VmExecutor::new(config)?;
+    let interpreter = executor.instance(&exe)?;
+    interpreter.execute(vec![], None)?;
+    
     Ok(())
 }

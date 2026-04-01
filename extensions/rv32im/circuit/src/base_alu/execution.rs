@@ -21,8 +21,8 @@ use crate::{adapters::imm_to_bytes, common::*, BaseAluExecutor};
 #[repr(C)]
 pub(super) struct BaseAluPreCompute {
     c: u32,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
 }
 
 impl<A, const LIMB_BITS: usize> BaseAluExecutor<A, { RV32_REGISTER_NUM_LIMBS }, LIMB_BITS> {
@@ -49,8 +49,8 @@ impl<A, const LIMB_BITS: usize> BaseAluExecutor<A, { RV32_REGISTER_NUM_LIMBS }, 
             } else {
                 c_u32
             },
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
         };
         Ok(is_imm)
     }

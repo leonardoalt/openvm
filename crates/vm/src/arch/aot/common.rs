@@ -25,40 +25,17 @@ pub const REG_AS2_PTR: &str = "r15";
 
 pub const DEFAULT_PC_OFFSET: i32 = 4;
 
-pub const RISCV_TO_X86_OVERRIDE_MAP: [Option<&str>; 32] = [
-    None,         // x0
-    None,         // x1
-    None,         // x2
-    None,         // x3
-    None,         // x4
-    None,         // x5
-    None,         // x6
-    None,         // x7
-    None,         // x8
-    None,         // x9
-    Some("r10d"), // x10
-    Some("r11d"), // x11
-    Some("r9d"),  // x12
-    Some("r8d"),  // x13
-    Some("ebp"),  // x14
-    Some("r13d"), // x15
-    None,         // x16
-    None,         // x17
-    None,         // x18
-    None,         // x19
-    None,         // x20
-    None,         // x21
-    None,         // x22
-    None,         // x23
-    None,         // x24
-    None,         // x25
-    None,         // x26
-    None,         // x27
-    None,         // x28
-    None,         // x29
-    None,         // x30
-    None,         // x31
-];
+// Extended to 1024 for XRegs1024 support. Entries 32-1023 are None (no x86 override).
+pub const RISCV_TO_X86_OVERRIDE_MAP: [Option<&str>; 1024] = {
+    let mut map: [Option<&str>; 1024] = [None; 1024];
+    map[10] = Some("r10d"); // x10
+    map[11] = Some("r11d"); // x11
+    map[12] = Some("r9d");  // x12
+    map[13] = Some("r8d");  // x13
+    map[14] = Some("ebp");  // x14
+    map[15] = Some("r13d"); // x15
+    map
+};
 
 pub fn sync_xmm_to_gpr() -> String {
     let mut asm_str = String::new();

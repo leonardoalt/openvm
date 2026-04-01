@@ -23,8 +23,8 @@ use super::Rv32HintStoreExecutor;
 #[repr(C)]
 struct HintStorePreCompute {
     c: u32,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
 }
 
 impl Rv32HintStoreExecutor {
@@ -50,8 +50,8 @@ impl Rv32HintStoreExecutor {
         *data = {
             HintStorePreCompute {
                 c: c.as_canonical_u32(),
-                a: a.as_canonical_u32() as u8,
-                b: b.as_canonical_u32() as u8,
+                a: a.as_canonical_u32() as u16,
+                b: b.as_canonical_u32() as u16,
             }
         };
         Ok(Rv32HintStoreOpcode::from_usize(

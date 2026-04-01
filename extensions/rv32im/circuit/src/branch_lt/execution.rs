@@ -17,8 +17,8 @@ use super::core::BranchLessThanExecutor;
 #[repr(C)]
 struct BranchLePreCompute {
     imm: isize,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
 }
 
 macro_rules! dispatch {
@@ -57,8 +57,8 @@ impl<A, const NUM_LIMBS: usize, const LIMB_BITS: usize>
         }
         *data = BranchLePreCompute {
             imm,
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
         };
         Ok(local_opcode)
     }

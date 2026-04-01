@@ -21,8 +21,8 @@ use crate::common::{
 #[repr(C)]
 struct BranchEqualPreCompute {
     imm: isize,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
 }
 
 impl<A, const NUM_LIMBS: usize> BranchEqualExecutor<A, NUM_LIMBS> {
@@ -50,8 +50,8 @@ impl<A, const NUM_LIMBS: usize> BranchEqualExecutor<A, NUM_LIMBS> {
         }
         *data = BranchEqualPreCompute {
             imm,
-            a: a.as_canonical_u32() as u8,
-            b: b.as_canonical_u32() as u8,
+            a: a.as_canonical_u32() as u16,
+            b: b.as_canonical_u32() as u16,
         };
         Ok(local_opcode == BranchEqualOpcode::BNE)
     }
@@ -126,8 +126,8 @@ where
         if d.as_canonical_u32() != RV32_REGISTER_AS {
             return Err(AotError::InvalidInstruction);
         }
-        let a = a.as_canonical_u32() as u8;
-        let b = b.as_canonical_u32() as u8;
+        let a = a.as_canonical_u32() as u16;
+        let b = b.as_canonical_u32() as u16;
 
         let mut asm_str = String::new();
         let a_reg = a / 4;

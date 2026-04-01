@@ -21,9 +21,9 @@ use crate::MultiplicationExecutor;
 #[derive(AlignedBytesBorrow, Clone)]
 #[repr(C)]
 struct MultiPreCompute {
-    a: u8,
-    b: u8,
-    c: u8,
+    a: u16,
+    b: u16,
+    c: u16,
 }
 
 impl<A, const LIMB_BITS: usize> MultiplicationExecutor<A, { RV32_REGISTER_NUM_LIMBS }, LIMB_BITS> {
@@ -42,9 +42,9 @@ impl<A, const LIMB_BITS: usize> MultiplicationExecutor<A, { RV32_REGISTER_NUM_LI
         }
 
         *data = MultiPreCompute {
-            a: inst.a.as_canonical_u32() as u8,
-            b: inst.b.as_canonical_u32() as u8,
-            c: inst.c.as_canonical_u32() as u8,
+            a: inst.a.as_canonical_u32() as u16,
+            b: inst.b.as_canonical_u32() as u16,
+            c: inst.c.as_canonical_u32() as u16,
         };
         Ok(())
     }

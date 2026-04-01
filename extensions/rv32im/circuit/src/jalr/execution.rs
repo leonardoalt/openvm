@@ -20,8 +20,8 @@ use crate::common::*;
 #[repr(C)]
 struct JalrPreCompute {
     imm_extended: u32,
-    a: u8,
-    b: u8,
+    a: u16,
+    b: u16,
 }
 
 impl<A> Rv32JalrExecutor<A> {
@@ -38,8 +38,8 @@ impl<A> Rv32JalrExecutor<A> {
         }
         *data = JalrPreCompute {
             imm_extended,
-            a: inst.a.as_canonical_u32() as u8,
-            b: inst.b.as_canonical_u32() as u8,
+            a: inst.a.as_canonical_u32() as u16,
+            b: inst.b.as_canonical_u32() as u16,
         };
         let enabled = !inst.f.is_zero();
         Ok(enabled)

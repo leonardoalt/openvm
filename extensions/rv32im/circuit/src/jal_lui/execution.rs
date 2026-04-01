@@ -17,7 +17,7 @@ use super::core::{get_signed_imm, Rv32JalLuiExecutor};
 #[repr(C)]
 struct JalLuiPreCompute {
     signed_imm: i32,
-    a: u8,
+    a: u16,
 }
 
 impl<A> Rv32JalLuiExecutor<A> {
@@ -36,7 +36,7 @@ impl<A> Rv32JalLuiExecutor<A> {
 
         *data = JalLuiPreCompute {
             signed_imm,
-            a: inst.a.as_canonical_u32() as u8,
+            a: inst.a.as_canonical_u32() as u16,
         };
         let enabled = !inst.f.is_zero();
         Ok((is_jal, enabled))
@@ -104,7 +104,7 @@ where
         );
         let is_jal = local_opcode == JAL;
         let signed_imm = get_signed_imm(is_jal, inst.c);
-        let a = inst.a.as_canonical_u32() as u8;
+        let a = inst.a.as_canonical_u32() as u16;
         let enabled = !inst.f.is_zero();
 
         let mut asm_str = String::new();
