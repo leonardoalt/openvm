@@ -22,6 +22,7 @@ use openvm_rv32im_circuit::{
 };
 use openvm_rv32im_transpiler::{
     Rv32ITranspilerExtension, Rv32IoTranspilerExtension, Rv32MTranspilerExtension,
+    XRegs1024TranspilerExtension,
 };
 use openvm_stark_sdk::p3_baby_bear::BabyBear;
 use openvm_transpiler::{elf::Elf, transpiler::Transpiler, FromElf};
@@ -124,6 +125,22 @@ fn test_rv32im_runtime(elf_path: &str) -> Result<()> {
         Transpiler::<F>::default()
             .with_extension(Rv32ITranspilerExtension)
             .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    let config = Rv32ImConfig::default();
+    let executor = VmExecutor::new(config)?;
+    let interpreter = executor.instance(&exe)?;
+    interpreter.execute(vec![], None)?;
+    Ok(())
+}
+
+#[test]
+fn test_xregs1024_runtime() -> Result<()> {
+    let elf = get_elf("tests/data/rv32im-xregs1024-fib")?;
+    let exe = VmExe::from_elf(
+        elf,
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension)
             .with_extension(Rv32IoTranspilerExtension),
     )?;
     let config = Rv32ImConfig::default();

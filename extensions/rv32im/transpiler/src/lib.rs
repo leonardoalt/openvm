@@ -22,7 +22,9 @@ use rrs_lib::{
 
 mod instructions;
 pub mod rrs;
+pub mod xregs1024;
 pub use instructions::*;
+pub use xregs1024::XRegs1024TranspilerExtension;
 
 #[derive(Default)]
 pub struct Rv32ITranspilerExtension;
