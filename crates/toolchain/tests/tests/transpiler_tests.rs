@@ -605,3 +605,72 @@ fn test_xregs1024_both_proofs() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_xregs1024_proof_with_metrics() -> Result<()> {
+    use openvm_sdk::{Sdk, StdIn, config::{AppConfig, SdkVmConfig, SdkSystemConfig}};
+    use openvm_stark_sdk::{config::FriParameters, bench::run_with_metric_collection};
+    use openvm_circuit::arch::SystemConfig;
+
+    // Determine which variant to run from env
+    let variant = std::env::var("XREGS_VARIANT").unwrap_or_else(|_| "baseline".to_string());
+
+    fn make_config() -> AppConfig<SdkVmConfig> {
+        let system = SystemConfig::default().with_public_values(32);
+        let vm_config = SdkVmConfig::builder()
+            .system(SdkSystemConfig { config: system })
+            .rv32i(Default::default())
+            .rv32m(Default::default())
+            .io(Default::default())
+            .build();
+        AppConfig {
+            app_fri_params: FriParameters::new_for_testing(1).into(),
+            app_vm_config: vm_config,
+            leaf_fri_params: FriParameters::new_for_testing(1).into(),
+            compiler_options: Default::default(),
+        }
+    }
+
+    let load_exe = |path: &str, transpiler: Transpiler::<F>, halve_pc: bool| -> Result<VmExe<F>> {
+        let elf_bytes = std::fs::read(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
+        )?;
+        let elf = openvm_transpiler::elf::Elf::decode(&elf_bytes, openvm_platform::memory::MEM_SIZE as u32)?;
+        let mut exe = VmExe::from_elf(elf, transpiler)?;
+        if halve_pc {
+            let base = 0x200800u32;
+            exe.pc_start = base + (exe.pc_start - base) / 2;
+        }
+        let sp_bytes = 0x200400u32.to_le_bytes();
+        for (i, b) in sp_bytes.iter().enumerate() {
+            exe.init_memory.insert((1, 8 + i as u32), *b);
+        }
+        Ok(exe)
+    };
+
+    run_with_metric_collection("OUTPUT_PATH", || -> Result<()> {
+        let (exe, label) = if variant == "extended" {
+            (load_exe(
+                "tests/data/keccak-xregs1024",
+                Transpiler::<F>::default().with_extension(XRegs1024TranspilerExtension),
+                true,
+            )?, "EXTENDED")
+        } else {
+            (load_exe(
+                "tests/data/keccak-baseline",
+                Transpiler::<F>::default()
+                    .with_extension(Rv32ITranspilerExtension)
+                    .with_extension(Rv32MTranspilerExtension)
+                    .with_extension(Rv32IoTranspilerExtension),
+                false,
+            )?, "BASELINE")
+        };
+
+        eprintln!("=== {label} PROOF WITH METRICS ===");
+        let sdk = Sdk::new(make_config())?;
+        let mut prover = sdk.app_prover(std::sync::Arc::new(exe))?;
+        let proof = prover.prove(StdIn::default())?;
+        eprintln!("Proof generated! {} segments", proof.per_segment.len());
+        Ok(())
+    })
+}
