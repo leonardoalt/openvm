@@ -418,12 +418,18 @@ fn test_xregs1024_proof_comparison() -> Result<()> {
     }
 
     // Helper: load ELF, transpile with given transpiler, set SP
-    let load_exe = |path: &str, transpiler: Transpiler::<F>| -> Result<VmExe<F>> {
+    let load_exe = |path: &str, transpiler: Transpiler::<F>, halve_pc: bool| -> Result<VmExe<F>> {
         let elf_bytes = std::fs::read(
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
         )?;
         let elf = openvm_transpiler::elf::Elf::decode(&elf_bytes, openvm_platform::memory::MEM_SIZE as u32)?;
         let mut exe = VmExe::from_elf(elf, transpiler)?;
+        if halve_pc {
+            // XRegs1024: each 8-byte instruction = 1 program slot (4-byte PC).
+            // Entry point from ELF is a byte address; halve it to match PC space.
+            let base = 0x200800u32; // TEXT_START
+            exe.pc_start = base + (exe.pc_start - base) / 2;
+        }
         let sp_bytes = 0x200400u32.to_le_bytes();
         for (i, b) in sp_bytes.iter().enumerate() {
             exe.init_memory.insert((1, 8 + i as u32), *b);
@@ -438,6 +444,7 @@ fn test_xregs1024_proof_comparison() -> Result<()> {
             .with_extension(Rv32ITranspilerExtension)
             .with_extension(Rv32MTranspilerExtension)
             .with_extension(Rv32IoTranspilerExtension),
+        false,
     )?;
     let sdk = Sdk::new(make_config())?;
     let (_, (baseline_cost, baseline_instret)) = sdk.execute_metered_cost(
@@ -450,10 +457,8 @@ fn test_xregs1024_proof_comparison() -> Result<()> {
     let extended_exe = load_exe(
         "tests/data/keccak-xregs1024",
         Transpiler::<F>::default()
-            .with_extension(XRegs1024TranspilerExtension)
-            .with_extension(Rv32ITranspilerExtension)
-            .with_extension(Rv32MTranspilerExtension)
-            .with_extension(Rv32IoTranspilerExtension),
+            .with_extension(XRegs1024TranspilerExtension),
+        true,  // halve PC for 8-byte instructions
     )?;
     let sdk2 = Sdk::new(make_config())?;
     let (_, (extended_cost, extended_instret)) = sdk2.execute_metered_cost(

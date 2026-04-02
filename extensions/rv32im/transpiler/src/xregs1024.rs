@@ -146,6 +146,44 @@ impl<F: PrimeField32> TranspilerExtension<F> for XRegs1024TranspilerExtension {
         }
 
         let lo = instruction_stream[0];
+
+        // Check for AUIPC+JALR call pair (standard 32-bit, 8 bytes total).
+        // These are emitted by PseudoCALL for function calls.
+        if (lo & 0x7F) == AUIPC as u32 {
+            let jalr_word = instruction_stream[1];
+            if (jalr_word & 0x7F) == JALR as u32 {
+                // This is a call: AUIPC rd, offset; JALR rd, rd, offset
+                // The AUIPC+JALR together compute: jump to (PC + hi20 + lo12)
+                // and save return address in rd.
+                // We transpile this as a JAL to the combined target.
+                // The AUIPC imm20 and JALR imm12 together give the full offset.
+                let auipc_imm = (lo & 0xFFFFF000) as i32; // upper 20 bits, sign-extended
+                let jalr_imm = (jalr_word as i32) >> 20;   // I-type imm12, sign-extended
+                // Halve the offset: LLVM calculates for 8-byte instructions,
+                // OpenVM uses PC_STEP=4 without phantom gaps.
+                let full_offset = auipc_imm.wrapping_add(jalr_imm) / 2;
+
+                let rd = ((lo >> 7) & 0x1F) as usize;
+                let is_tail = rd == 0; // PseudoTAIL uses rd=x0
+
+                // Emit as JAL (PC-relative jump). Both call and tail-call are
+                // PC-relative — the only difference is whether rd is saved.
+                return Some(TranspilerOutput {
+                    instructions: vec![Some(Instruction::new(
+                        VmOpcode::from_usize(Rv32JalLuiOpcode::JAL.global_opcode().as_usize()),
+                        F::from_usize(RV32_REGISTER_NUM_LIMBS * rd),
+                        F::ZERO,
+                        isize_to_field(full_offset as isize),
+                        F::ONE,
+                        F::ZERO,
+                        F::from_bool(rd != 0),  // f=1 enables rd write (save return addr)
+                        F::ZERO,
+                    ))],
+                    used_u32s: 2,
+                });
+            }
+        }
+
         // Check for 64-bit marker
         if (lo & 0x7F) != XREGS1024_MARKER {
             return None;
@@ -301,12 +339,10 @@ impl<F: PrimeField32> TranspilerExtension<F> for XRegs1024TranspilerExtension {
             _ => Some(nop()),
         };
 
-        // Emit instruction + PHANTOM NOP gap. Each 64-bit instruction consumes
-        // 2 u32s and produces 2 PC slots (instruction + phantom). This maintains
-        // ELF byte address = OpenVM PC address, so all fixups (including
-        // R_RISCV_CALL_PLT for AUIPC+JALR) work correctly.
+        // Emit instruction without gap. With PC_STEP=8, each 8-byte chunk
+        // (2 u32s) = 1 PC slot. No phantom gaps needed.
         instruction.map(|inst| TranspilerOutput {
-            instructions: vec![Some(inst), Some(nop())],
+            instructions: vec![Some(inst)],
             used_u32s: 2,
         })
     }
@@ -391,9 +427,9 @@ fn make_store<F: PrimeField32>(opcode: usize, d: &Decoded64) -> Option<Instructi
 }
 
 fn make_branch<F: PrimeField32>(opcode: usize, d: &Decoded64) -> Option<Instruction<F>> {
-    // Branch offset passes through unchanged — with the PHANTOM gap approach,
-    // ELF byte addresses = OpenVM PC addresses.
-    let imm = b_imm(d.lo);
+    // Halve the offset: LLVM calculates for 8-byte instructions,
+    // OpenVM uses PC_STEP=4 without phantom gaps.
+    let imm = b_imm(d.lo) / 2;
     Some(Instruction::new(
         VmOpcode::from_usize(opcode),
         F::from_usize(RV32_REGISTER_NUM_LIMBS * d.rs1),
@@ -435,9 +471,8 @@ fn make_auipc<F: PrimeField32>(d: &Decoded64) -> Option<Instruction<F>> {
 }
 
 fn make_jal<F: PrimeField32>(d: &Decoded64) -> Option<Instruction<F>> {
-    // Jump offset passes through unchanged — with PHANTOM gap approach,
-    // ELF byte addresses = OpenVM PC addresses.
-    let imm = j_imm(d.lo);
+    // Halve the offset: LLVM calculates for 8-byte instructions.
+    let imm = j_imm(d.lo) / 2;
     Some(Instruction::new(
         VmOpcode::from_usize(Rv32JalLuiOpcode::JAL.global_opcode().as_usize()),
         F::from_usize(RV32_REGISTER_NUM_LIMBS * d.rd),
