@@ -259,10 +259,8 @@ fn test_xregs1024_keccak_comparison() -> Result<()> {
     baseline_interpreter.execute(vec![], None)?;
     let baseline_time = t0.elapsed();
 
-    // Count instructions in baseline
-    let baseline_insn_count = baseline_exe.program.defined_instructions().len();
     eprintln!("=== BASELINE (32 registers) ===");
-    eprintln!("Instructions in program: {}", baseline_insn_count);
+    eprintln!("Program instructions: {}", baseline_exe.program.defined_instructions().len());
     eprintln!("Execution time: {:?}", baseline_time);
 
     // EXTENDED: 1024-register RISC-V (64-bit encoding)
@@ -288,15 +286,12 @@ fn test_xregs1024_keccak_comparison() -> Result<()> {
     extended_interpreter.execute(vec![], None)?;
     let extended_time = t1.elapsed();
 
-    let extended_insn_count = extended_exe.program.defined_instructions().len();
     eprintln!("=== EXTENDED (1024 registers) ===");
-    eprintln!("Instructions in program: {}", extended_insn_count);
+    eprintln!("Program instructions: {}", extended_exe.program.defined_instructions().len());
     eprintln!("Execution time: {:?}", extended_time);
 
     eprintln!("=== COMPARISON ===");
-    eprintln!("Instruction reduction: {} -> {} ({:.1}% fewer)",
-        baseline_insn_count, extended_insn_count,
-        (1.0 - extended_insn_count as f64 / baseline_insn_count as f64) * 100.0);
+    eprintln!("Execution time: {:?} vs {:?}", baseline_time, extended_time);
 
     Ok(())
 }
