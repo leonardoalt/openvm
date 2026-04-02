@@ -393,3 +393,82 @@ fn test_xregs1024_transpile_only() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_xregs1024_proof_comparison() -> Result<()> {
+    use openvm_sdk::{Sdk, StdIn, config::{AppConfig, SdkVmConfig, SdkSystemConfig}};
+    use openvm_stark_sdk::config::FriParameters;
+    use openvm_circuit::arch::SystemConfig;
+
+    fn make_config() -> AppConfig<SdkVmConfig> {
+        let system = SystemConfig::default()
+            .with_public_values(32);
+        let vm_config = SdkVmConfig::builder()
+            .system(SdkSystemConfig { config: system })
+            .rv32i(Default::default())
+            .rv32m(Default::default())
+            .io(Default::default())
+            .build();
+        AppConfig {
+            app_fri_params: FriParameters::new_for_testing(1).into(),
+            app_vm_config: vm_config,
+            leaf_fri_params: FriParameters::new_for_testing(1).into(),
+            compiler_options: Default::default(),
+        }
+    }
+
+    // Helper: load ELF, transpile with given transpiler, set SP
+    let load_exe = |path: &str, transpiler: Transpiler::<F>| -> Result<VmExe<F>> {
+        let elf_bytes = std::fs::read(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
+        )?;
+        let elf = openvm_transpiler::elf::Elf::decode(&elf_bytes, openvm_platform::memory::MEM_SIZE as u32)?;
+        let mut exe = VmExe::from_elf(elf, transpiler)?;
+        let sp_bytes = 0x200400u32.to_le_bytes();
+        for (i, b) in sp_bytes.iter().enumerate() {
+            exe.init_memory.insert((1, 8 + i as u32), *b);
+        }
+        Ok(exe)
+    };
+
+    // BASELINE
+    let baseline_exe = load_exe(
+        "tests/data/keccak-baseline",
+        Transpiler::<F>::default()
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    let sdk = Sdk::new(make_config())?;
+    let (_, (baseline_cost, baseline_instret)) = sdk.execute_metered_cost(
+        std::sync::Arc::new(baseline_exe), StdIn::default())?;
+    eprintln!("=== BASELINE (32 registers) ===");
+    eprintln!("Executed instructions: {}", baseline_instret);
+    eprintln!("Total cost (trace cells): {}", baseline_cost);
+
+    // EXTENDED
+    let extended_exe = load_exe(
+        "tests/data/keccak-xregs1024",
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension)
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    let sdk2 = Sdk::new(make_config())?;
+    let (_, (extended_cost, extended_instret)) = sdk2.execute_metered_cost(
+        std::sync::Arc::new(extended_exe), StdIn::default())?;
+    eprintln!("=== EXTENDED (1024 registers) ===");
+    eprintln!("Executed instructions: {}", extended_instret);
+    eprintln!("Total cost (trace cells): {}", extended_cost);
+
+    eprintln!("=== COMPARISON ===");
+    eprintln!("Instructions: {} -> {} ({:.1}%)",
+        baseline_instret, extended_instret,
+        (1.0 - extended_instret as f64 / baseline_instret as f64) * 100.0);
+    eprintln!("Trace cells: {} -> {} ({:.1}%)",
+        baseline_cost, extended_cost,
+        (1.0 - extended_cost as f64 / baseline_cost as f64) * 100.0);
+
+    Ok(())
+}

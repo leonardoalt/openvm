@@ -26,6 +26,7 @@ openvm-algebra-circuit.workspace = true
 openvm-ecc-circuit = { workspace = true }
 openvm-instructions = { workspace = true }
 openvm-platform = { workspace = true }
+openvm-sdk = { workspace = true }
 test-case.workspace = true
 rand = { workspace = true }
 serde = { workspace = true, features = ["alloc"] }

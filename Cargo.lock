@@ -7199,6 +7199,7 @@ dependencies = [
  "openvm-platform",
  "openvm-rv32im-circuit",
  "openvm-rv32im-transpiler",
+ "openvm-sdk",
  "openvm-stark-backend",
  "openvm-stark-sdk",
  "openvm-transpiler",
