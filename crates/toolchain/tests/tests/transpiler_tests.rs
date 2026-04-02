@@ -1,3 +1,4 @@
+use openvm_instructions::LocalOpcode;
 use std::{
     fs::read,
     path::{Path, PathBuf},
@@ -334,8 +335,8 @@ fn test_xregs1024_trace_instructions() -> Result<()> {
 #[test]
 fn test_xregs1024_extended_only() -> Result<()> {
     let elf = get_elf("tests/data/keccak-xregs1024")?;
-    
-    let exe = VmExe::from_elf(
+
+    let mut exe = VmExe::from_elf(
         elf,
         Transpiler::<F>::default()
             .with_extension(XRegs1024TranspilerExtension)
@@ -344,6 +345,11 @@ fn test_xregs1024_extended_only() -> Result<()> {
             .with_extension(Rv32IoTranspilerExtension),
     )?;
     
+    // Initialize SP
+    let sp_val: u32 = 0x200400;
+    for (i, byte) in sp_val.to_le_bytes().iter().enumerate() {
+        exe.init_memory.insert((1, 8 + i as u32), *byte);
+    }
     eprintln!("pc_start: 0x{:08x}", exe.pc_start);
     eprintln!("Program size: {}", exe.program.defined_instructions().len());
     eprintln!("Init memory size: {}", exe.init_memory.len());
@@ -353,5 +359,42 @@ fn test_xregs1024_extended_only() -> Result<()> {
     let interpreter = executor.instance(&exe)?;
     interpreter.execute(vec![], None)?;
     
+    Ok(())
+}
+
+#[test]
+fn test_xregs1024_transpile_only() -> Result<()> {
+    let elf = get_elf("tests/data/keccak-xregs1024")?;
+    let exe = VmExe::from_elf(
+        elf,
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension)
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+
+    // Count different instruction types
+    let mut terminate_count = 0;
+    let mut phantom_count = 0;
+    let mut other_count = 0;
+    let terminate_opcode = openvm_instructions::SystemOpcode::TERMINATE.global_opcode().as_usize();
+    let phantom_opcode = openvm_instructions::SystemOpcode::PHANTOM.global_opcode().as_usize();
+
+    for (i, inst) in exe.program.defined_instructions().iter().enumerate() {
+        if inst.opcode.as_usize() == terminate_opcode {
+            terminate_count += 1;
+            let exit_code = inst.c.as_canonical_u32();
+            eprintln!("  TERMINATE idx={} exit_code={}", i, exit_code);
+        } else if inst.opcode.as_usize() == phantom_opcode {
+            phantom_count += 1;
+        } else {
+            other_count += 1;
+        }
+    }
+
+    eprintln!("Total: {} terminate, {} phantom, {} other", terminate_count, phantom_count, other_count);
+    eprintln!("Entry: 0x{:08x}", exe.pc_start);
+
     Ok(())
 }

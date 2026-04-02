@@ -158,37 +158,19 @@ impl<F: PrimeField32> TranspilerExtension<F> for XRegs1024TranspilerExtension {
             OP => {
                 match d.funct7 {
                     0x00 | 0x20 => {
-                        // Standard ALU R-type
-                        let opcode = match (d.funct7, d.funct3) {
-                            (0x00, 0) => BaseAluOpcode::ADD,
-                            (0x20, 0) => BaseAluOpcode::SUB,
-                            (0x00, 4) => BaseAluOpcode::XOR,
-                            (0x00, 6) => BaseAluOpcode::OR,
-                            (0x00, 7) => BaseAluOpcode::AND,
-                            _ => return Some(TranspilerOutput {
-                                instructions: vec![Some(unimp()), None],
-                                used_u32s: 2,
-                            }),
-                        };
-                        if d.funct3 == 1 || d.funct3 == 5 {
-                            // SLL, SRL, SRA
-                            let opcode = match (d.funct7, d.funct3) {
-                                (0x00, 1) => ShiftOpcode::SLL,
-                                (0x00, 5) => ShiftOpcode::SRL,
-                                (0x20, 5) => ShiftOpcode::SRA,
-                                _ => unreachable!(),
-                            };
-                            make_r_type(opcode.global_opcode().as_usize(), &d)
-                        } else if d.funct3 == 2 || d.funct3 == 3 {
-                            // SLT, SLTU
-                            let opcode = match d.funct3 {
-                                2 => LessThanOpcode::SLT,
-                                3 => LessThanOpcode::SLTU,
-                                _ => unreachable!(),
-                            };
-                            make_r_type(opcode.global_opcode().as_usize(), &d)
-                        } else {
-                            make_r_type(opcode.global_opcode().as_usize(), &d)
+                        // Standard R-type (ALU, shifts, comparisons)
+                        match (d.funct7, d.funct3) {
+                            (0x00, 0) => make_r_type(BaseAluOpcode::ADD.global_opcode().as_usize(), &d),
+                            (0x20, 0) => make_r_type(BaseAluOpcode::SUB.global_opcode().as_usize(), &d),
+                            (0x00, 1) => make_r_type(ShiftOpcode::SLL.global_opcode().as_usize(), &d),
+                            (0x00, 2) => make_r_type(LessThanOpcode::SLT.global_opcode().as_usize(), &d),
+                            (0x00, 3) => make_r_type(LessThanOpcode::SLTU.global_opcode().as_usize(), &d),
+                            (0x00, 4) => make_r_type(BaseAluOpcode::XOR.global_opcode().as_usize(), &d),
+                            (0x00, 5) => make_r_type(ShiftOpcode::SRL.global_opcode().as_usize(), &d),
+                            (0x20, 5) => make_r_type(ShiftOpcode::SRA.global_opcode().as_usize(), &d),
+                            (0x00, 6) => make_r_type(BaseAluOpcode::OR.global_opcode().as_usize(), &d),
+                            (0x00, 7) => make_r_type(BaseAluOpcode::AND.global_opcode().as_usize(), &d),
+                            _ => Some(nop()),
                         }
                     }
                     0x01 => {
@@ -319,11 +301,12 @@ impl<F: PrimeField32> TranspilerExtension<F> for XRegs1024TranspilerExtension {
             _ => Some(nop()),
         };
 
-        // Emit instruction without gap. Each 64-bit instruction consumes 2 u32s
-        // but occupies only 1 PC slot. Branch offsets from LLVM are for 8-byte
-        // instructions, so we halve them in make_branch/make_jal/make_jalr.
+        // Emit instruction + PHANTOM NOP gap. Each 64-bit instruction consumes
+        // 2 u32s and produces 2 PC slots (instruction + phantom). This maintains
+        // ELF byte address = OpenVM PC address, so all fixups (including
+        // R_RISCV_CALL_PLT for AUIPC+JALR) work correctly.
         instruction.map(|inst| TranspilerOutput {
-            instructions: vec![Some(inst)],
+            instructions: vec![Some(inst), Some(nop())],
             used_u32s: 2,
         })
     }
@@ -408,9 +391,9 @@ fn make_store<F: PrimeField32>(opcode: usize, d: &Decoded64) -> Option<Instructi
 }
 
 fn make_branch<F: PrimeField32>(opcode: usize, d: &Decoded64) -> Option<Instruction<F>> {
-    // Halve the branch offset: LLVM calculates for 8-byte instructions,
-    // but OpenVM uses DEFAULT_PC_STEP=4 per instruction slot.
-    let imm = b_imm(d.lo) / 2;
+    // Branch offset passes through unchanged — with the PHANTOM gap approach,
+    // ELF byte addresses = OpenVM PC addresses.
+    let imm = b_imm(d.lo);
     Some(Instruction::new(
         VmOpcode::from_usize(opcode),
         F::from_usize(RV32_REGISTER_NUM_LIMBS * d.rs1),
@@ -452,8 +435,9 @@ fn make_auipc<F: PrimeField32>(d: &Decoded64) -> Option<Instruction<F>> {
 }
 
 fn make_jal<F: PrimeField32>(d: &Decoded64) -> Option<Instruction<F>> {
-    // Halve the jump offset (8-byte instructions → 4-byte PC slots)
-    let imm = j_imm(d.lo) / 2;
+    // Jump offset passes through unchanged — with PHANTOM gap approach,
+    // ELF byte addresses = OpenVM PC addresses.
+    let imm = j_imm(d.lo);
     Some(Instruction::new(
         VmOpcode::from_usize(Rv32JalLuiOpcode::JAL.global_opcode().as_usize()),
         F::from_usize(RV32_REGISTER_NUM_LIMBS * d.rd),
