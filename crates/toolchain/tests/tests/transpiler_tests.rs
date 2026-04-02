@@ -477,3 +477,131 @@ fn test_xregs1024_proof_comparison() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_xregs1024_actual_proof() -> Result<()> {
+    use openvm_sdk::{Sdk, StdIn, config::{AppConfig, SdkVmConfig, SdkSystemConfig}};
+    use openvm_stark_sdk::config::FriParameters;
+    use openvm_circuit::arch::SystemConfig;
+
+    let system = SystemConfig::default().with_public_values(32);
+    let vm_config = SdkVmConfig::builder()
+        .system(SdkSystemConfig { config: system })
+        .rv32i(Default::default())
+        .rv32m(Default::default())
+        .io(Default::default())
+        .build();
+    let app_config = AppConfig {
+        app_fri_params: FriParameters::new_for_testing(1).into(),
+        app_vm_config: vm_config,
+        leaf_fri_params: FriParameters::new_for_testing(1).into(),
+        compiler_options: Default::default(),
+    };
+
+    // Load baseline ELF
+    let elf_bytes = std::fs::read(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/data/keccak-baseline")
+    )?;
+    let elf = openvm_transpiler::elf::Elf::decode(&elf_bytes, openvm_platform::memory::MEM_SIZE as u32)?;
+    let mut exe = VmExe::from_elf(elf,
+        Transpiler::<F>::default()
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+    )?;
+    let sp_bytes = 0x200400u32.to_le_bytes();
+    for (i, b) in sp_bytes.iter().enumerate() {
+        exe.init_memory.insert((1, 8 + i as u32), *b);
+    }
+
+    let sdk = Sdk::new(app_config)?;
+    eprintln!("Generating proof for BASELINE keccak (100 iterations)...");
+    let mut prover = sdk.app_prover(std::sync::Arc::new(exe))?;
+    let proof = prover.prove(StdIn::default())?;
+    eprintln!("Proof generated! {} segments", proof.per_segment.len());
+
+    Ok(())
+}
+
+#[test]
+fn test_xregs1024_both_proofs() -> Result<()> {
+    use openvm_sdk::{Sdk, StdIn, config::{AppConfig, SdkVmConfig, SdkSystemConfig}};
+    use openvm_stark_sdk::config::FriParameters;
+    use openvm_circuit::arch::SystemConfig;
+    use std::time::Instant;
+
+    fn make_config() -> AppConfig<SdkVmConfig> {
+        let system = SystemConfig::default().with_public_values(32);
+        let vm_config = SdkVmConfig::builder()
+            .system(SdkSystemConfig { config: system })
+            .rv32i(Default::default())
+            .rv32m(Default::default())
+            .io(Default::default())
+            .build();
+        AppConfig {
+            app_fri_params: FriParameters::new_for_testing(1).into(),
+            app_vm_config: vm_config,
+            leaf_fri_params: FriParameters::new_for_testing(1).into(),
+            compiler_options: Default::default(),
+        }
+    }
+
+    let load_exe = |path: &str, transpiler: Transpiler::<F>, halve_pc: bool| -> Result<VmExe<F>> {
+        let elf_bytes = std::fs::read(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
+        )?;
+        let elf = openvm_transpiler::elf::Elf::decode(&elf_bytes, openvm_platform::memory::MEM_SIZE as u32)?;
+        let mut exe = VmExe::from_elf(elf, transpiler)?;
+        if halve_pc {
+            let base = 0x200800u32;
+            exe.pc_start = base + (exe.pc_start - base) / 2;
+        }
+        let sp_bytes = 0x200400u32.to_le_bytes();
+        for (i, b) in sp_bytes.iter().enumerate() {
+            exe.init_memory.insert((1, 8 + i as u32), *b);
+        }
+        Ok(exe)
+    };
+
+    // === BASELINE PROOF ===
+    let baseline_exe = load_exe(
+        "tests/data/keccak-baseline",
+        Transpiler::<F>::default()
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+        false,
+    )?;
+    let sdk = Sdk::new(make_config())?;
+    eprintln!("=== BASELINE PROOF ===");
+    let t0 = Instant::now();
+    let mut baseline_prover = sdk.app_prover(std::sync::Arc::new(baseline_exe))?;
+    let baseline_proof = baseline_prover.prove(StdIn::default())?;
+    let baseline_time = t0.elapsed();
+    eprintln!("Segments: {}", baseline_proof.per_segment.len());
+    eprintln!("Prove time: {:?}", baseline_time);
+
+    // === EXTENDED PROOF ===
+    let extended_exe = load_exe(
+        "tests/data/keccak-xregs1024",
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension),
+        true,
+    )?;
+    let sdk2 = Sdk::new(make_config())?;
+    eprintln!("=== EXTENDED PROOF ===");
+    let t1 = Instant::now();
+    let mut extended_prover = sdk2.app_prover(std::sync::Arc::new(extended_exe))?;
+    let extended_proof = extended_prover.prove(StdIn::default())?;
+    let extended_time = t1.elapsed();
+    eprintln!("Segments: {}", extended_proof.per_segment.len());
+    eprintln!("Prove time: {:?}", extended_time);
+
+    eprintln!("=== COMPARISON ===");
+    eprintln!("Prove time: {:?} vs {:?} ({:.1}% change)",
+        baseline_time, extended_time,
+        (1.0 - extended_time.as_secs_f64() / baseline_time.as_secs_f64()) * 100.0);
+
+    Ok(())
+}
