@@ -75,11 +75,17 @@ fn i_imm(lo: u32) -> i32 {
     (lo as i32) >> 20
 }
 
-/// Extract 12-bit S-type immediate from low u32
+/// Extract 12-bit S-type immediate from low u32 (sign-extended to i32)
 fn s_imm(lo: u32) -> i32 {
-    let lo5 = ((lo >> 7) & 0x1F) as i32;
-    let hi7 = ((lo as i32) >> 25) & 0x7F;
-    (hi7 << 5) | lo5
+    let lo5 = (lo >> 7) & 0x1F;
+    let hi7 = (lo >> 25) & 0x7F;
+    let imm12 = (hi7 << 5) | lo5;
+    // Sign-extend 12-bit value
+    if imm12 & 0x800 != 0 {
+        (imm12 | 0xFFFFF000) as i32
+    } else {
+        imm12 as i32
+    }
 }
 
 /// Extract 13-bit B-type immediate from low u32

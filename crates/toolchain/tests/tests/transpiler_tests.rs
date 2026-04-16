@@ -674,3 +674,86 @@ fn test_xregs1024_proof_with_metrics() -> Result<()> {
         Ok(())
     })
 }
+
+#[test]
+fn test_xregs1024_tiny_sha3_compare() -> Result<()> {
+    use openvm_sdk::{Sdk, StdIn, config::{AppConfig, SdkVmConfig, SdkSystemConfig}};
+    use openvm_stark_sdk::config::FriParameters;
+    use std::time::Instant;
+
+    fn make_config() -> AppConfig<SdkVmConfig> {
+        let system = SystemConfig::default().with_public_values(32);
+        let vm_config = SdkVmConfig::builder()
+            .system(SdkSystemConfig { config: system })
+            .rv32i(Default::default())
+            .rv32m(Default::default())
+            .io(Default::default())
+            .build();
+        AppConfig {
+            app_fri_params: FriParameters::new_for_testing(1).into(),
+            app_vm_config: vm_config,
+            leaf_fri_params: FriParameters::new_for_testing(1).into(),
+            compiler_options: Default::default(),
+        }
+    }
+
+    let load_exe = |path: &str, transpiler: Transpiler::<F>, halve_pc: bool| -> Result<VmExe<F>> {
+        let elf_bytes = std::fs::read(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
+        )?;
+        let elf = Elf::decode(&elf_bytes, MEM_SIZE as u32)?;
+        let mut exe = VmExe::from_elf(elf, transpiler)?;
+        if halve_pc {
+            let base = 0x200800u32;
+            exe.pc_start = base + (exe.pc_start - base) / 2;
+        }
+        let sp_val: u32 = 0x200400;
+        for (i, byte) in sp_val.to_le_bytes().iter().enumerate() {
+            exe.init_memory.insert((1, 8 + i as u32), *byte);
+        }
+        Ok(exe)
+    };
+
+    let baseline_exe = load_exe(
+        "tests/data/keccak-baseline",
+        Transpiler::<F>::default()
+            .with_extension(Rv32ITranspilerExtension)
+            .with_extension(Rv32MTranspilerExtension)
+            .with_extension(Rv32IoTranspilerExtension),
+        false,
+    )?;
+    let sdk = Sdk::new(make_config())?;
+    let t0 = Instant::now();
+    let (_, (baseline_cost, baseline_instret)) = sdk.execute_metered_cost(
+        std::sync::Arc::new(baseline_exe), StdIn::default())?;
+    let baseline_time = t0.elapsed();
+    eprintln!("=== BASELINE (32 registers, tiny_sha3) ===");
+    eprintln!("Executed instructions: {}", baseline_instret);
+    eprintln!("Total cost (trace cells): {}", baseline_cost);
+    eprintln!("Execute time: {:?}", baseline_time);
+
+    let extended_exe = load_exe(
+        "tests/data/keccak-xregs1024",
+        Transpiler::<F>::default()
+            .with_extension(XRegs1024TranspilerExtension),
+        true,
+    )?;
+    let sdk2 = Sdk::new(make_config())?;
+    let t1 = Instant::now();
+    let (_, (extended_cost, extended_instret)) = sdk2.execute_metered_cost(
+        std::sync::Arc::new(extended_exe), StdIn::default())?;
+    let extended_time = t1.elapsed();
+    eprintln!("=== EXTENDED (1024 registers, tiny_sha3) ===");
+    eprintln!("Executed instructions: {}", extended_instret);
+    eprintln!("Total cost (trace cells): {}", extended_cost);
+    eprintln!("Execute time: {:?}", extended_time);
+
+    eprintln!("=== COMPARISON ===");
+    eprintln!("Instructions: {} -> {} ({:+.2}%)",
+        baseline_instret, extended_instret,
+        -((1.0 - extended_instret as f64 / baseline_instret as f64) * 100.0));
+    eprintln!("Trace cells: {} -> {} ({:+.2}%)",
+        baseline_cost, extended_cost,
+        -((1.0 - extended_cost as f64 / baseline_cost as f64) * 100.0));
+    Ok(())
+}
